@@ -27,7 +27,7 @@ import org.apache.hadoop.mapred.RecordReader;
 
 import org.apache.avro.file.FileReader;
 import org.apache.avro.file.DataFileReader;
-import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.avro.reflect.ReflectDatumReader;
 
 /** An {@link RecordReader} for Avro data files. */
 public class AvroRecordReader<T>
@@ -41,7 +41,7 @@ public class AvroRecordReader<T>
     throws IOException {
     this(new DataFileReader<T>
          (new FsInput(split.getPath(), job),
-          new SpecificDatumReader<T>(AvroJob.getInputSchema(job))),
+          new ReflectDatumReader<T>(AvroJob.getInputSchema(job))),
          split);
   }
 

@@ -74,6 +74,30 @@ public class ReflectData extends SpecificData {
   public static ReflectData get() { return INSTANCE; }
 
   @Override
+  public void setField(Object record, String name, int position, Object o) {
+    if (record instanceof IndexedRecord) {
+      super.setField(record, name, position, o);
+      return;
+    }
+    try {
+      getField(record.getClass(), name).set(record, o);
+    } catch (IllegalAccessException e) {
+      throw new AvroRuntimeException(e);
+    }
+  }
+
+  @Override
+  public Object getField(Object record, String name, int position) {
+    if (record instanceof IndexedRecord)
+      return super.getField(record, name, position);
+    try {
+      return getField(record.getClass(), name).get(record);
+    } catch (IllegalAccessException e) {
+      throw new AvroRuntimeException(e);
+    }
+  }
+
+  @Override
   protected boolean isRecord(Object datum) {
     if (datum == null) return false;
     return getSchema(datum.getClass()).getType() == Schema.Type.RECORD;
@@ -137,7 +161,7 @@ public class ReflectData extends SpecificData {
 
   /** Return the named field of the provided class.  Implementation caches
    * values, since this is used at runtime to get and set fields. */
-  protected static Field getField(Class c, String name) {
+  private static Field getField(Class c, String name) {
     Map<String,Field> fields = FIELD_CACHE.get(c);
     if (fields == null) {
       fields = new ConcurrentHashMap<String,Field>();
@@ -424,7 +448,18 @@ public class ReflectData extends SpecificData {
 
   @Override
   public int compare(Object o1, Object o2, Schema s) {
-    throw new UnsupportedOperationException();
+    switch (s.getType()) {
+    case ARRAY:
+      if ((o1 instanceof Collection))
+        return super.compare(o1, o2, s);
+      // FIXME: need to implement for Object[]
+      throw new UnsupportedOperationException();
+    case BYTES:
+      // FIXME: need to implement for byte[]
+      throw new UnsupportedOperationException();
+    default:
+      return super.compare(o1, o2, s);
+    }
   }
 
 }

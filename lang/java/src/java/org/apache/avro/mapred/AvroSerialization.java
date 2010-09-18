@@ -33,8 +33,8 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DatumWriter;
-import org.apache.avro.specific.SpecificDatumReader;
-import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.reflect.ReflectDatumReader;
+import org.apache.avro.reflect.ReflectDatumWriter;
 
 /** The {@link Serialization} used by jobs configured with {@link AvroJob}. */
 public class AvroSerialization<T> extends Configured 
@@ -54,7 +54,7 @@ public class AvroSerialization<T> extends Configured
     Schema schema = isKey
       ? Pair.getKeySchema(AvroJob.getMapOutputSchema(getConf()))
       : Pair.getValueSchema(AvroJob.getMapOutputSchema(getConf()));
-    return new AvroWrapperDeserializer(new SpecificDatumReader<T>(schema),
+    return new AvroWrapperDeserializer(new ReflectDatumReader<T>(schema),
                                        isKey);
   }
   
@@ -104,7 +104,11 @@ public class AvroSerialization<T> extends Configured
       : (AvroKey.class.isAssignableFrom(c)
          ? Pair.getKeySchema(AvroJob.getMapOutputSchema(getConf()))
          : Pair.getValueSchema(AvroJob.getMapOutputSchema(getConf())));
-    return new AvroWrapperSerializer(new SpecificDatumWriter<T>(schema));
+    return new AvroWrapperSerializer(makeWriter(schema));
+  }
+
+  protected DatumWriter<T> makeWriter(Schema schema) {
+      return new ReflectDatumWriter<T>(schema);
   }
 
   private class AvroWrapperSerializer implements Serializer<AvroWrapper<T>> {
