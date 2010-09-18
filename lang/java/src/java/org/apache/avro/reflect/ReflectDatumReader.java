@@ -27,6 +27,7 @@ import java.nio.ByteBuffer;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.avro.util.Utf8;
 import org.apache.avro.io.Decoder;
 
 /**
@@ -95,10 +96,11 @@ public class ReflectDatumReader<T> extends SpecificDatumReader<T> {
   @SuppressWarnings(value="unchecked")
   protected Object readString(Object old, Schema s,
                               Decoder in) throws IOException {
-    String value = (String)readString(null, in);
+    Object ovalue = readString(old, in);
     Class c = ReflectData.getClassProp(s, ReflectData.CLASS_PROP);
     if (c != null)                                // Stringable annotated class
       try {                                       // use String-arg ctor
+        String value = ovalue.toString();
         return c.getConstructor(String.class).newInstance(value);
       } catch (NoSuchMethodException e) {
         throw new AvroRuntimeException(e);
@@ -109,12 +111,12 @@ public class ReflectDatumReader<T> extends SpecificDatumReader<T> {
       } catch (InvocationTargetException e) {
         throw new AvroRuntimeException(e);
       }
-    return value;
+    return ovalue;
   }
 
   @Override
   protected Object readString(Object old, Decoder in) throws IOException {
-    return super.readString(null, in).toString();
+    return super.readString(null, in);
   }
 
   @Override
