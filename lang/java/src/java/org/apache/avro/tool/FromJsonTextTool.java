@@ -153,7 +153,7 @@ public class FromJsonTextTool implements Tool {
             }
             Schema childSchema = field.schema();
             if (child.isArray()) {
-                GenericArray o = recordFromArrayNode(child, childSchema, name);
+                GenericArray<Object> o = recordFromArrayNode(child, childSchema, name);
                 r.put(name, o);
                 
             }
@@ -212,14 +212,14 @@ public class FromJsonTextTool implements Tool {
         return r;
     }
     
-    private GenericArray recordFromArrayNode(JsonNode node, Schema schema, String container) {
+    private GenericArray<Object> recordFromArrayNode(JsonNode node, Schema schema, String container) {
         schema = getArray(schema);
-        GenericArray r = new GenericData.Array(node.size(), schema);
+        GenericArray<Object> r = new GenericData.Array<Object>(node.size(), schema);
         Schema childSchema = schema.getElementType();
         for (int i=0; i<node.size(); i++) {
             JsonNode child = node.get(i);
             if (child.isArray()) {
-                GenericArray o = recordFromArrayNode(child, childSchema, container);
+                GenericArray<Object> o = recordFromArrayNode(child, childSchema, container);
                 r.add(o);
             }
             else if (child.isObject()) {
