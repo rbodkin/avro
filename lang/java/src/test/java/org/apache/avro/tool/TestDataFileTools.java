@@ -18,6 +18,7 @@
 package org.apache.avro.tool;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 import java.io.ByteArrayOutputStream;
@@ -26,6 +27,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,6 +40,8 @@ import org.apache.avro.file.DataFileReader;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.tools.ant.filters.StringInputStream;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -86,7 +90,7 @@ public class TestDataFileTools {
         null, // stderr
         Arrays.asList(sampleFile.getPath()));
     assertEquals(jsonData.toString(), baos.toString("UTF-8").
-        replace("\r", ""));
+        replace("\r", ""));        
   }
   
   @Test
@@ -117,6 +121,7 @@ public class TestDataFileTools {
       testWrite(name, extra, expectedCodec, "-schema", schema.toString());
       testWrite(name, extra, expectedCodec, "-schema-file", schemaFile.toString());
   }
+  
   public void testWrite(String name, List<String> extra, String expectedCodec, String... extraArgs) 
   throws Exception {
     File outFile = AvroTestUtil.tempFile(
@@ -124,10 +129,10 @@ public class TestDataFileTools {
     FileOutputStream fout = new FileOutputStream(outFile);
     PrintStream out = new PrintStream(fout);
     List<String> args = new ArrayList<String>();
+    args.add("-");
     for (String arg : extraArgs) {
         args.add(arg);
-    }
-    args.add("-");
+    }    
     args.addAll(extra);
     new DataFileWriteTool().run(
         new StringInputStream(jsonData),
@@ -214,5 +219,62 @@ public class TestDataFileTools {
     fout.close();
     return outFile;
   }
-  
+
+  @Test
+  public void testReadJsonInputText() throws Exception {
+    String schema = "{ \"type\":\"record\", \"name\":\"TestRecord\", \"fields\": [ "+
+        "{\"name\":\"intval\",\"type\":\"int\"}, " +
+        "{\"name\":\"strval\",\"type\":[\"string\", \"null\"]}]}";
+    String jsonData = "{\"intval\":12}\n{\"intval\":-73,\"strval\":\"hello, there!!\"}\n";
+    File schemaFile =  AvroTestUtil.tempFile(
+        TestDataFileTools.class + ".testReadJsonInputText.avsc");
+    PrintWriter writer = new PrintWriter(new FileWriter(schemaFile));
+    writer.print(schema);
+    writer.close();
+    
+    for (String codec : new String[] { null, "deflate" }) {
+      File outFile = AvroTestUtil.tempFile(
+          TestDataFileTools.class + ".testReadJsonInputText.avro");
+      FileOutputStream fout = new FileOutputStream(outFile);
+      PrintStream out = new PrintStream(fout);
+      List<String> args = new ArrayList<String>(Arrays.asList("-", "-", "-schema", schemaFile.getPath()));
+      if (codec != null) {
+        args.add("-codec");
+        args.add(codec);
+        args.add("-level");
+        args.add("5");
+      }
+      new FromJsonTextTool().run(
+          new StringInputStream(jsonData),
+          new PrintStream(out), // stdout
+          null, // stderr
+          args );
+      out.close();
+      fout.close();
+      
+      // Read it back, and make sure it's valid.
+      GenericDatumReader<GenericRecord> reader = new GenericDatumReader<GenericRecord>();
+      DataFileReader<GenericRecord> fileReader = new DataFileReader<GenericRecord>(outFile,reader);
+      int i = 0;
+      for (GenericRecord datum : fileReader) {
+        Object str = datum.get("strval");
+        int val = (Integer)datum.get("intval");
+        if (i==0) {
+          assertNull(str);
+          assertEquals(12, val);
+        } else {
+          assertEquals(new Utf8("hello, there!!"), str);
+          assertEquals(-73, val);
+        }
+        i++;
+      }
+      assertEquals(2, i);
+      assertEquals(Schema.parse(schema), fileReader.getSchema());
+      String codecStr = fileReader.getMetaString("avro.codec");
+      if (null == codecStr) {
+        codecStr = "null";
+      }
+      assertEquals((codec==null ? "null" : codec), codecStr);
+    }
+  }
 }

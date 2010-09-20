@@ -48,7 +48,7 @@ import org.codehaus.jackson.JsonNode;
 import org.codehaus.jackson.map.ObjectMapper;
 
 /**
- * Reads a text file into an Avro data file.
+ * Reads a text file into an Avro data file. This reads a full JSON file with name: value pairs, not a JSON encoding of Avro records as DataFileWriteTool does.
  * 
  * Can accept a file name, and HDFS file URI, or stdin. Can write to a file name, an HDFS URI, or stdout.
  */
@@ -57,7 +57,7 @@ public class FromJsonTextTool implements Tool {
 
     @Override
     public String getName() {
-        return "fromtext";
+        return "fromjsontext";
     }
 
     @Override
@@ -69,21 +69,34 @@ public class FromJsonTextTool implements Tool {
     public int run(InputStream stdin, PrintStream out, PrintStream err, List<String> args) throws Exception {
 
         OptionParser p = new OptionParser();
-        OptionSpec<Integer> level = p.accepts("level", "compression level").withOptionalArg().ofType(Integer.class);
+        OptionSpec<String> codec =
+          p.accepts("codec", "Compression codec")
+          .withRequiredArg()
+          .defaultsTo("null")
+          .ofType(String.class);
 
-        OptionSpec<String> file = p.accepts("schema", "Schema File").withRequiredArg().ofType(String.class);
+        OptionSpec<Integer> level = 
+          p.accepts("level", "compression level").
+          withOptionalArg().
+          ofType(Integer.class);
+
+        OptionSpec<String> schemaOpt = 
+          p.accepts("schema", "Schema File").
+          withRequiredArg().
+          ofType(String.class);
 
         OptionSet opts = p.parse(args.toArray(new String[0]));
 
-        String schemaFile = file.value(opts);        
+        String schemaFile = schemaOpt.value(opts);        
         if (opts.nonOptionArguments().size() != 2 || schemaFile == null) {
             err.println("Expected 2 args: from_file to_file (local filenames," + " Hadoop URI's, or '-' for stdin/stdout) -schema <file>");
             p.printHelpOn(err);
             return 1;
         }
 
-        BufferedInputStream inStream = Util.fileOrStdin(args.get(0), stdin);
-        BufferedOutputStream outStream = Util.fileOrStdout(args.get(1), out);
+        List<String> nargs = opts.nonOptionArguments();
+        BufferedInputStream inStream = Util.fileOrStdin(nargs.get(0), stdin);
+        BufferedOutputStream outStream = Util.fileOrStdout(nargs.get(1), out);
 
         int compressionLevel = 1; // Default compression level
         if (opts.hasArgument(level)) {
@@ -93,7 +106,14 @@ public class FromJsonTextTool implements Tool {
         Schema schema = Schema.parse(readSchemaFromFile(schemaFile));
         
         DataFileWriter<Object> writer = new DataFileWriter<Object>(new GenericDatumWriter<Object>());
-        writer.setCodec(CodecFactory.deflateCodec(compressionLevel));
+        String codecVal = codec.value(opts);
+        if (!"null".equals(codecVal)) {
+          if ("deflate".equals(codecVal)) {
+            writer.setCodec(CodecFactory.deflateCodec(level.value(opts)));
+          } else {
+            writer.setCodec(CodecFactory.fromString(codecVal));
+          }
+        }
         writer.create(schema, outStream);
 
         ObjectMapper m = new ObjectMapper();
@@ -138,6 +158,14 @@ public class FromJsonTextTool implements Tool {
         return 0;
     }
 
+    private static String replaceInvalidNameChars(String name) {
+      name = name.replaceAll("[^a-zA-Z0-9_]", "_");
+      if (name.matches("[0-9].*")) {
+        name = "_"+name.substring(1);
+      }
+      return name;
+    }
+    
     private GenericRecord recordFromNode(JsonNode node, Schema schema, String container) {
         schema = getObject(schema);
         GenericRecord r = new GenericData.Record(schema);
@@ -145,7 +173,7 @@ public class FromJsonTextTool implements Tool {
         Iterator<String> itn = node.getFieldNames();
         while (it.hasNext()) {
             JsonNode child = it.next();
-            String name = itn.next();
+            String name = replaceInvalidNameChars(itn.next());
             Field field = schema.getField(name);
             if (field == null) {
                 System.err.println("Warning: skipping unmapped field "+name+" contained in "+container);

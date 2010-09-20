@@ -51,7 +51,8 @@ public class Main {
         new RpcSendTool(),
         new FromTextTool(),
         new ToTextTool(),
-        new TetherJob()
+        new TetherJob(),
+        new FromJsonTextTool()
         }) {
       Tool prev = tools.put(tool.getName(), tool);
       if (prev != null) {
